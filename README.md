@@ -84,5 +84,5 @@ rework-generator/
 ├── requirements.txt        # Dependencias (streamlit, pandas, openpyxl)
 └── README.md               # Este documento
 
-Conclusión
+# Conclusión
 El proyecto terminó siendo más sencillo de lo que parecía al inicio en cuanto a la estructura y análisis: el core es un generador de strings con un patrón fijo. Lo que tomó más tiempo fue entender exactamente el formato esperado y diseñar la interfaz para que fuera útil más allá del caso puntual del chocolate.
