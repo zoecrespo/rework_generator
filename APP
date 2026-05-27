@@ -1,0 +1,198 @@
+# app.py — Interfaz Streamlit del Rework Generator
+
+import streamlit as st
+import pandas as pd
+import io
+from generator import build_rework_string, generate_all, parse_xlsx, CHOCOLATE_PROCESS
+
+# ── Configuración de página ──────────────────────────────────────────
+st.set_page_config(
+    page_title="Rework Generator — Chocolate",
+    page_icon="🍫",
+    layout="wide",
+)
+
+# ── Estilos ──────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
+    .rw-string {
+        font-family: 'DM Mono', monospace;
+        font-size: 12px;
+        background: #f5edd8;
+        border-left: 3px solid #c47a2b;
+        padding: 8px 12px;
+        border-radius: 0 6px 6px 0;
+        color: #2c1a0e;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+    .empty-rw {
+        font-family: 'DM Mono', monospace;
+        font-size: 12px;
+        color: #aaa;
+        font-style: italic;
+    }
+    .stat-box {
+        background: #fff8f0;
+        border: 1px solid #e8cfa0;
+        border-radius: 10px;
+        padding: 16px 20px;
+        text-align: center;
+    }
+    .stat-num { font-size: 32px; font-weight: 700; color: #c47a2b; }
+    .stat-lbl { font-size: 11px; color: #8a6a50; font-family: 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .06em; }
+</style>
+""", unsafe_allow_html=True)
+
+# ── Header ───────────────────────────────────────────────────────────
+st.markdown("# 🍫 Rework Generator")
+st.markdown("**Proceso Creación de Chocolate** — Generador automático de flujos de retrabajo")
+st.divider()
+
+# ── Tabs principales ─────────────────────────────────────────────────
+tab_demo, tab_excel, tab_manual = st.tabs([
+    "📋 Demo Chocolate",
+    "📂 Modo Excel (.xlsx)",
+    "✏️ Modo Manual",
+])
+
+# ═══════════════════════════════════════════════════════════════════
+# TAB 1 — Demo con el proceso de chocolate precargado
+# ═══════════════════════════════════════════════════════════════════
+with tab_demo:
+    st.subheader("Proceso: Creación de Chocolate")
+    st.caption("Datos precargados con el proceso completo de 13 pasos.")
+
+    rows = generate_all(CHOCOLATE_PROCESS)
+    df   = pd.DataFrame(rows)
+
+    # Métricas
+    total_steps  = len(df)
+    steps_with   = df[df["REWORKS"] != ""].shape[0]
+    total_reworks= sum(r.count(";") + 1 if r else 0 for r in df["REWORKS"])
+
+    c1, c2, c3 = st.columns(3)
+    c1.markdown(f'<div class="stat-box"><div class="stat-num">{total_steps}</div><div class="stat-lbl">Pasos totales</div></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div class="stat-box"><div class="stat-num">{steps_with}</div><div class="stat-lbl">Con retrabajo</div></div>', unsafe_allow_html=True)
+    c3.markdown(f'<div class="stat-box"><div class="stat-num">{total_reworks}</div><div class="stat-lbl">Retrabajos total</div></div>', unsafe_allow_html=True)
+
+    st.markdown("#### Output generado")
+    for _, row in df.iterrows():
+        with st.expander(f"Pos. {row['POSITION']} — {row['STEP']}", expanded=bool(row['REWORKS'])):
+            if row["REWORKS"]:
+                display = row["REWORKS"].replace("; ", ";\n")
+                st.markdown(f'<div class="rw-string">{display}</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="empty-rw">— sin retrabajos —</div>', unsafe_allow_html=True)
+
+    st.markdown("#### Vista tabla (formato xlsx)")
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # Descarga CSV
+    csv = df.to_csv(index=False).encode("utf-8")
+    st.download_button("⬇️ Descargar CSV", csv, "reworks_chocolate.csv", "text/csv")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# TAB 2 — Modo Excel
+# ═══════════════════════════════════════════════════════════════════
+with tab_excel:
+    st.subheader("Carga tu archivo .xlsx")
+    st.markdown("""
+El archivo debe tener **dos hojas**:
+- `FlowStructures` — columnas: `FLOW`, `STEP`, `REASONS` (razones separadas por `;`)
+- `FlowReworks` — columnas: `REASON`, `FLOW_PATH`, `RETURN_STEP`
+    """)
+
+    uploaded = st.file_uploader("Selecciona tu archivo", type=["xlsx"])
+
+    if uploaded:
+        try:
+            xls  = pd.ExcelFile(uploaded)
+            df_s = xls.parse("FlowStructures")
+            df_r = xls.parse("FlowReworks")
+            steps = parse_xlsx(df_s, df_r)
+            rows  = generate_all(steps)
+            df_out = pd.DataFrame(rows)
+
+            st.success(f"✅ {len(df_out)} pasos procesados")
+            st.dataframe(df_out, use_container_width=True, hide_index=True)
+
+            for _, row in df_out.iterrows():
+                if row["REWORKS"]:
+                    with st.expander(f"Pos. {row['POSITION']} — {row['STEP']}"):
+                        display = row["REWORKS"].replace("; ", ";\n")
+                        st.markdown(f'<div class="rw-string">{display}</div>', unsafe_allow_html=True)
+
+            csv = df_out.to_csv(index=False).encode("utf-8")
+            st.download_button("⬇️ Descargar resultado CSV", csv, "reworks_output.csv", "text/csv")
+
+        except Exception as e:
+            st.error(f"Error al procesar el archivo: {e}")
+    else:
+        st.info("Sube un archivo .xlsx para comenzar.")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# TAB 3 — Modo Manual
+# ═══════════════════════════════════════════════════════════════════
+with tab_manual:
+    st.subheader("Definir proceso manualmente")
+
+    process_name = st.text_input("Nombre del proceso", value="Proceso Creación de Chocolate")
+
+    if "manual_steps" not in st.session_state:
+        st.session_state.manual_steps = [
+            {"name": "Tostado de Cacao", "reworks": [
+                {"flow_path": "Retrabajo Tostado/Re-Tostar", "return_step": "Tostado de Cacao", "reason": "Cacao Quemado"}
+            ]}
+        ]
+
+    steps_data = st.session_state.manual_steps
+
+    for i, step in enumerate(steps_data):
+        with st.expander(f"Paso {i+1}: {step['name'] or '(sin nombre)'}", expanded=True):
+            step["name"] = st.text_input("Nombre del paso", value=step["name"], key=f"sname_{i}")
+
+            st.caption("Retrabajos:")
+            for j, rw in enumerate(step["reworks"]):
+                cols = st.columns([2, 2, 2, 0.4])
+                rw["flow_path"]   = cols[0].text_input("GoToFlowPath", value=rw["flow_path"],   key=f"fp_{i}_{j}", placeholder="Ruta/Sub-ruta")
+                rw["return_step"] = cols[1].text_input("ReturnStep",   value=rw["return_step"], key=f"rs_{i}_{j}", placeholder=step["name"])
+                rw["reason"]      = cols[2].text_input("Reason",       value=rw["reason"],      key=f"re_{i}_{j}", placeholder="Razón")
+                if cols[3].button("✕", key=f"del_rw_{i}_{j}"):
+                    step["reworks"].pop(j)
+                    st.rerun()
+
+            if st.button("+ agregar retrabajo", key=f"add_rw_{i}"):
+                step["reworks"].append({"flow_path": "", "return_step": "", "reason": ""})
+                st.rerun()
+
+        if st.button(f"🗑 Eliminar paso {i+1}", key=f"del_step_{i}"):
+            steps_data.pop(i)
+            st.rerun()
+
+    if st.button("➕ Agregar paso"):
+        steps_data.append({"name": "", "reworks": []})
+        st.rerun()
+
+    st.divider()
+
+    if st.button("▶ Generar Output", type="primary"):
+        formatted = [{"flow": process_name, "name": s["name"], "reworks": s["reworks"]} for s in steps_data]
+        rows   = generate_all(formatted)
+        df_out = pd.DataFrame(rows)
+
+        st.markdown("#### Output generado")
+        for _, row in df_out.iterrows():
+            with st.expander(f"Pos. {row['POSITION']} — {row['STEP']}", expanded=bool(row['REWORKS'])):
+                if row["REWORKS"]:
+                    display = row["REWORKS"].replace("; ", ";\n")
+                    st.markdown(f'<div class="rw-string">{display}</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<div class="empty-rw">— sin retrabajos —</div>', unsafe_allow_html=True)
+
+        st.dataframe(df_out, use_container_width=True, hide_index=True)
+        csv = df_out.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Descargar CSV", csv, "reworks_manual.csv", "text/csv")
