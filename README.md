@@ -1,4 +1,4 @@
-
+``md id="4"
 # Rework Generator — Proceso Creación de Chocolate
 
 Proyecto Final · Paradigmas de Programación  
@@ -262,4 +262,5 @@ Eso es exactamente como funciona en la industria real.
 ## En resumen
 
 El core técnico es simple, pero llegar a él requirió un proceso de análisis, iteración y toma de decisiones que es el verdadero aprendizaje del proyecto.
+```md id="5"
 
