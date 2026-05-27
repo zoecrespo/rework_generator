@@ -1,0 +1,108 @@
+ generator.py — Lógica core del generador de strings de retrabajo
+
+def build_rework_string(reworks: list[dict]) -> str:
+    """
+    Dado una lista de retrabajos, construye el string en el formato requerido:
+    GoToFlowPath[...] ReturnStep[...] Reason[...];
+    Múltiples retrabajos se separan con espacio.
+    """
+    parts = []
+    for rw in reworks:
+        flow_path   = rw.get("flow_path", "").strip()
+        return_step = rw.get("return_step", "").strip()
+        reason      = rw.get("reason", "").strip()
+        if flow_path or reason:
+            parts.append(
+                f"GoToFlowPath[{flow_path}] ReturnStep[{return_step}] Reason[{reason}];"
+            )
+    return " ".join(parts)
+
+
+def generate_all(steps: list[dict]) -> list[dict]:
+    """
+    Recorre todos los pasos del proceso principal y genera el string de retrabajo
+    para cada uno. Devuelve lista con FLOW, STEP, POSITION, REWORKS.
+    """
+    result = []
+    for i, step in enumerate(steps, start=1):
+        rework_str = build_rework_string(step.get("reworks", []))
+        result.append({
+            "FLOW":     step.get("flow", ""),
+            "STEP":     step.get("name", ""),
+            "POSITION": i,
+            "REWORKS":  rework_str,
+        })
+    return result
+
+
+def parse_xlsx(df_structures, df_reworks) -> list[dict]:
+    """
+    Convierte los DataFrames de las hojas FlowStructures y FlowReworks
+    al formato interno de pasos con sus retrabajos asignados.
+    """
+    # Construir mapa de razones → retrabajo
+    rw_map = {}
+    for _, row in df_reworks.iterrows():
+        reason    = str(row.get("REASON", "")).strip()
+        flow_path = str(row.get("FLOW_PATH", "")).strip()
+        ret_step  = str(row.get("RETURN_STEP", "")).strip()
+        if reason:
+            rw_map[reason] = {"flow_path": flow_path, "return_step": ret_step, "reason": reason}
+
+    steps = []
+    for _, row in df_structures.iterrows():
+        name    = str(row.get("STEP", "")).strip()
+        flow    = str(row.get("FLOW", "")).strip()
+        reasons = str(row.get("REASONS", "")).strip()
+
+        reworks = []
+        if reasons and reasons.lower() not in ("nan", ""):
+            for r in reasons.split(";"):
+                r = r.strip()
+                if r in rw_map:
+                    entry = dict(rw_map[r])
+                    if not entry["return_step"]:
+                        entry["return_step"] = name
+                    reworks.append(entry)
+
+        steps.append({"flow": flow, "name": name, "reworks": reworks})
+    return steps
+
+
+# ── Datos del proceso de creación de chocolate (hardcoded para demo) ──
+CHOCOLATE_PROCESS = [
+    {"flow": "Proceso Creación de Chocolate", "name": "Recepción de Cacao",      "reworks": []},
+    {"flow": "Proceso Creación de Chocolate", "name": "Limpieza y Selección",     "reworks": [
+        {"flow_path": "Retrabajo Limpieza/Re-Limpieza",              "return_step": "Limpieza y Selección",    "reason": "Cacao Contaminado"},
+    ]},
+    {"flow": "Proceso Creación de Chocolate", "name": "Tostado de Cacao",         "reworks": [
+        {"flow_path": "Retrabajo Tostado/Re-Tostar",                 "return_step": "Tostado de Cacao",        "reason": "Cacao Quemado"},
+        {"flow_path": "Retrabajo Tostado/Tostado Extra",             "return_step": "Tostado de Cacao",        "reason": "Cacao Crudo"},
+    ]},
+    {"flow": "Proceso Creación de Chocolate", "name": "Descascarillado",           "reworks": [
+        {"flow_path": "Retrabajo Descascarillado/Re-Descascarillar", "return_step": "Descascarillado",         "reason": "Cascara Incompleta"},
+    ]},
+    {"flow": "Proceso Creación de Chocolate", "name": "Molienda de Cacao",         "reworks": []},
+    {"flow": "Proceso Creación de Chocolate", "name": "Mezclado y Conchado",       "reworks": [
+        {"flow_path": "Retrabajo Mezcla/Re-Mezclar",                 "return_step": "Mezclado y Conchado",     "reason": "Textura Incorrecta"},
+        {"flow_path": "Retrabajo Mezcla/Ajuste Ingredientes",        "return_step": "Mezclado y Conchado",     "reason": "Sabor Fuera de Especificacion"},
+    ]},
+    {"flow": "Proceso Creación de Chocolate", "name": "Temperado",                 "reworks": [
+        {"flow_path": "Retrabajo Temperado/Re-Temperar",             "return_step": "Temperado",               "reason": "Temperatura Incorrecta"},
+    ]},
+    {"flow": "Proceso Creación de Chocolate", "name": "Moldeado",                  "reworks": [
+        {"flow_path": "Retrabajo Moldeado/Re-Moldear",               "return_step": "Moldeado",                "reason": "Forma Defectuosa"},
+    ]},
+    {"flow": "Proceso Creación de Chocolate", "name": "Enfriado y Solidificación", "reworks": []},
+    {"flow": "Proceso Creación de Chocolate", "name": "Desmoldado",                "reworks": [
+        {"flow_path": "Retrabajo Desmoldado/Re-Desmoldar",           "return_step": "Desmoldado",              "reason": "Chocolate Pegado"},
+    ]},
+    {"flow": "Proceso Creación de Chocolate", "name": "Inspección de Calidad",     "reworks": [
+        {"flow_path": "Retrabajo Calidad/Re-Inspeccionar",           "return_step": "Inspección de Calidad",   "reason": "Falla Visual"},
+        {"flow_path": "Retrabajo Calidad/Reproceso Total",           "return_step": "Mezclado y Conchado",     "reason": "Fuera de Estandar"},
+    ]},
+    {"flow": "Proceso Creación de Chocolate", "name": "Empaque",                   "reworks": [
+        {"flow_path": "Retrabajo Empaque/Re-Empacar",                "return_step": "Empaque",                 "reason": "Empaque Dañado"},
+    ]},
+    {"flow": "Proceso Creación de Chocolate", "name": "Despacho",                  "reworks": []},
+]
